@@ -5,7 +5,6 @@ from notion_client import Client
 from urllib.parse import urlparse
 from datetime import datetime
 import time
-import re
 
 # 固定の認証情報
 NOTION_API_TOKEN = "ntn_i2957150244j9hSJCmlhWx1tkxlBP2MNliQk9Z3AkBHgcK"  # あなたの実際のAPIトークンに置き換えてください
@@ -19,7 +18,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# カスタムCSSを適用（以前と同じCSSをここに貼り付け）
+# カスタムCSSを適用
 st.markdown("""
 <style>
     /* 全体のスタイリング */
@@ -195,8 +194,6 @@ if 'error' not in st.session_state:
     st.session_state['error'] = None
 if 'notion_url' not in st.session_state:
     st.session_state['notion_url'] = None
-if 'debug_info' not in st.session_state:
-    st.session_state['debug_info'] = None
 
 # メイン画面表示 - ヘッダー部分
 st.markdown("<h1>Notion Bookmarker</h1>", unsafe_allow_html=True)
@@ -208,10 +205,9 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# URLからウェブページの情報を抽出する関数（改良版）
+# URLからウェブページの情報を抽出する関数
 def extract_webpage_info(url):
-    # さまざまなUser-Agentを使い分ける
-    desktop_headers = {
+    headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
         'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
@@ -238,46 +234,20 @@ def extract_webpage_info(url):
         'domain': domain
     }
     
-    # デバッグ情報
-    debug_info = {
-        'status_code': None,
-        'content_length': None,
-        'content_sample': None,
-        'title_tag': None,
-        'title_string': None,
-        'error': None
-    }
-    
     try:
-        # ウェブページのコンテンツを取得 (タイムアウトを長めに設定)
-        response = requests.get(url, headers=desktop_headers, timeout=15, allow_redirects=True)
-        
-        # デバッグ情報を保存
-        debug_info['status_code'] = response.status_code
-        debug_info['content_length'] = len(response.content)
-        debug_info['content_sample'] = response.content[:200].decode('utf-8', errors='ignore')
+        # ウェブページのコンテンツを取得
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         
         # エラーチェック
         if response.status_code != 200:
-            debug_info['error'] = f"HTTPステータスコード {response.status_code} が返されました。基本情報のみ使用します。"
-            return page_info, debug_info
+            return page_info
         
         # BeautifulSoupでHTMLを解析
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # タイトルを取得 (複数の方法で試みる)
-        if soup.title:
-            debug_info['title_tag'] = str(soup.title)
-            if soup.title.string:
-                debug_info['title_string'] = soup.title.string.strip()
-                page_info['title'] = soup.title.string.strip()
-        
-        # タイトルがない場合、メタタグから取得を試みる
-        if page_info['title'] == f"Saved from {domain}":
-            og_title = soup.find('meta', attrs={'property': 'og:title'})
-            if og_title and og_title.get('content'):
-                page_info['title'] = og_title.get('content').strip()
-                debug_info['title_string'] = f"From og:title: {page_info['title']}"
+        # タイトルを取得
+        if soup.title and soup.title.string:
+            page_info['title'] = soup.title.string.strip()
         
         # メタ説明を取得
         meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
@@ -289,32 +259,10 @@ def extract_webpage_info(url):
         if og_image:
             page_info['thumbnail'] = og_image.get('content', '')
         
-        # 特定のドメイン向けのカスタム処理
-        if 'iwara' in domain:
-            # Iwaraの場合、HTMLから直接タイトルを抽出する試み
-            # h1タグを探す
-            h1_tag = soup.find('h1')
-            if h1_tag and h1_tag.text:
-                page_info['title'] = h1_tag.text.strip()
-                debug_info['title_string'] = f"From h1 tag: {page_info['title']}"
+        return page_info
             
-            # クラス名に基づいてタイトル要素を探す
-            title_divs = soup.find_all('div', class_=re.compile(r'title|header|heading', re.IGNORECASE))
-            if title_divs and not page_info['title'].startswith("Saved from"):
-                for div in title_divs:
-                    if div.text and len(div.text.strip()) > 5:  # 短すぎないテキストを選択
-                        page_info['title'] = div.text.strip()
-                        debug_info['title_string'] = f"From div with title class: {page_info['title']}"
-                        break
-        
-        return page_info, debug_info
-            
-    except requests.exceptions.RequestException as e:
-        debug_info['error'] = f"リクエストエラーが発生しました: {str(e)}"
-        return page_info, debug_info
-    except Exception as e:
-        debug_info['error'] = f"その他のエラーが発生しました: {str(e)}"
-        return page_info, debug_info
+    except Exception:
+        return page_info
 
 # Notionに情報を追加する関数
 def add_to_notion(page_info):
@@ -409,7 +357,6 @@ with col2:
 if fetch_button and url:
     st.session_state['loading'] = True
     st.session_state['page_info'] = None
-    st.session_state['debug_info'] = None
     st.session_state['success'] = False
     st.session_state['error'] = None
     
@@ -420,9 +367,8 @@ if fetch_button and url:
         progress_bar.progress(percent_complete)
     
     # ウェブページ情報を抽出
-    page_info, debug_info = extract_webpage_info(url)
+    page_info = extract_webpage_info(url)
     st.session_state['page_info'] = page_info
-    st.session_state['debug_info'] = debug_info
     st.session_state['loading'] = False
     
     # プログレスバーを完了状態にして少し待ってから消す
@@ -436,7 +382,6 @@ if fetch_button and url:
 # 情報を取得した後の表示
 if st.session_state['page_info']:
     page_info = st.session_state['page_info']
-    debug_info = st.session_state['debug_info']
     
     # 抽出した情報をカードUIで表示
     st.markdown("""
@@ -465,13 +410,6 @@ if st.session_state['page_info']:
         """, unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)  # カードを閉じる
-    
-    # デバッグ情報を表示（デバッグが必要な場合にコメントを外す）
-    with st.expander("詳細情報", expanded=False):
-        if debug_info:
-            st.subheader("デバッグ情報")
-            for key, value in debug_info.items():
-                st.write(f"**{key}**: {value}")
     
     # 保存ボタン - アクセントカラー使用
     save_col1, save_col2 = st.columns([1, 3])
@@ -547,6 +485,28 @@ if st.session_state['page_info']:
             <span>保存中にエラーが発生しました: {st.session_state['error']}</span>
         </div>
         """, unsafe_allow_html=True)
+
+# モバイルで本アプリをホーム画面に追加するよう促すティップス
+if st.session_state.get('first_run', True):
+    st.session_state['first_run'] = False
+    
+    # モバイルデバイスのみに表示
+    st.markdown("""
+    <script>
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        document.write(`
+            <div style="background-color: #FEF3C7; color: #92400E; padding: 1rem; border-radius: 8px; margin: 1rem 0; display: flex; align-items: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.75rem;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>このアプリをホーム画面に追加すると、いつでも簡単にアクセスできます。</span>
+            </div>
+        `);
+    }
+    </script>
+    """, unsafe_allow_html=True)
 
 # フッター
 st.markdown("""
