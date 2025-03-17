@@ -43,13 +43,7 @@ if 'raw_html' not in st.session_state:
 
 # メイン画面表示 - ヘッダー部分
 st.markdown("<h1>Notion Bookmarker</h1>", unsafe_allow_html=True)
-st.markdown("""
-<div style="margin-bottom: 2rem;">
-    <p style="font-size: 1.1rem; color: #4B5563; margin-bottom: 1.5rem;">
-        ウェブページの情報を簡単にNotionデータベースに保存します。
-    </p>
-</div>
-""", unsafe_allow_html=True)
+
 
 # 複数のユーザーエージェントを設定
 USER_AGENTS = [
@@ -413,11 +407,6 @@ def add_to_notion(page_info):
         return False, str(e)
 
 # URL入力エリア - スタイリッシュなデザイン
-st.markdown("""
-<div style="background-color: white; padding: 1.75rem; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 2rem;">
-    <h3 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.3rem; color: #333;">📌 ウェブページのURLを入力</h3>
-</div>
-""", unsafe_allow_html=True)
 
 # URLの入力フォーム
 url = st.text_input("", placeholder="https://example.com", label_visibility="collapsed")
