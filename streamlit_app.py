@@ -35,7 +35,7 @@ st.markdown("""
 if st.session_state.get('view_mode') != 'settings':
     if st.button("⚙️ 設定を開く", key="open_settings"):
         st.session_state['view_mode'] = 'settings'
-        st.experimental_rerun()
+        st.rerun()
 
     # メイン画面コンテンツ
     if 'notion_token' not in st.session_state or 'database_id' not in st.session_state:
