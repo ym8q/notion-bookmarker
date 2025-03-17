@@ -5,6 +5,10 @@ from notion_client import Client
 from urllib.parse import urlparse
 from datetime import datetime
 
+# 固定の認証情報 (APIトークンとデータベースID)
+NOTION_API_TOKEN = "ntn_i2957150244j9hSJCmlhWx1tkxlBP2MNliQk9Z3AkBHgcK"  # あなたの実際のAPIトークンに置き換えてください
+DATABASE_ID = "1b90b0428824814fa0d9db921aa812d0"  # あなたの実際のデータベースIDに置き換えてください
+
 # アプリのタイトルとスタイル設定
 st.set_page_config(
     page_title="Notionブックマーカー",
@@ -28,11 +32,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# セッション状態の初期化
-if 'notion_token' not in st.session_state:
-    st.session_state['notion_token'] = ""
-if 'database_id' not in st.session_state:
-    st.session_state['database_id'] = ""
+# セッション状態の初期化 (ページ情報のみ保持)
 if 'page_info' not in st.session_state:
     st.session_state['page_info'] = None
 
@@ -40,33 +40,9 @@ if 'page_info' not in st.session_state:
 st.title("Notionブックマーカー")
 st.markdown("URLを入力すると、ページ情報をNotionデータベースに保存します。")
 
-# サイドバーに設定項目を表示
-with st.sidebar:
-    st.header("設定")
-    
-    # Notion APIトークンとデータベースIDの入力
-    notion_token = st.text_input(
-        "Notion APIトークン", 
-        value=st.session_state['notion_token'],
-        type="password",
-        help="Notionの統合ページで取得したAPIトークン"
-    )
-    
-    database_id = st.text_input(
-        "データベースID", 
-        value=st.session_state['database_id'],
-        help="NotionデータベースのURLからIDを抽出したもの"
-    )
-    
-    # 設定を保存
-    if st.button("設定を保存", key="save_settings"):
-        st.session_state['notion_token'] = notion_token
-        st.session_state['database_id'] = database_id
-        st.success("設定を保存しました！")
-
 # URLからウェブページの情報を抽出する関数
 def extract_webpage_info(url):
-    # 元のPythonコードと完全に同じヘッダーを使用
+    # ヘッダー設定
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -97,7 +73,7 @@ def extract_webpage_info(url):
     try:
         # 進捗状況インジケータを表示
         with st.spinner('ページ情報を取得中...'):
-            # ウェブページのコンテンツを取得 - 元のコードと同じパラメータを使用
+            # ウェブページのコンテンツを取得
             response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
             
             # エラーチェック
@@ -105,27 +81,22 @@ def extract_webpage_info(url):
                 st.warning(f"HTTPステータスコード {response.status_code} が返されました。基本情報のみ使用します。")
                 return page_info
             
-            # BeautifulSoupでHTMLを解析 - 元のコードと同じパーサーを使用
+            # BeautifulSoupでHTMLを解析
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # タイトルを取得 - 元のコードと同じロジック
+            # タイトルを取得
             if soup.title and soup.title.string:
                 page_info['title'] = soup.title.string.strip()
             
-            # メタ説明を取得 - 元のコードと同じロジック
+            # メタ説明を取得
             meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
             if meta_desc:
                 page_info['description'] = meta_desc.get('content', '')
             
-            # サムネイル画像を取得 - 元のコードと同じロジック
+            # サムネイル画像を取得 (Open Graph画像を優先)
             og_image = soup.find('meta', attrs={'property': 'og:image'})
             if og_image:
                 page_info['thumbnail'] = og_image.get('content', '')
-            
-            # デバッグ情報
-            st.write(f"Debug - タイトルタグ: {soup.title}")
-            if soup.title:
-                st.write(f"Debug - タイトル文字列: {soup.title.string}")
             
             return page_info
             
@@ -137,16 +108,15 @@ def extract_webpage_info(url):
         return page_info
 
 # Notionに情報を追加する関数
-def add_to_notion(page_info, notion_token, database_id):
+def add_to_notion(page_info):
     try:
         # Notionクライアントを初期化
-        notion = Client(auth=notion_token)
+        notion = Client(auth=NOTION_API_TOKEN)
         
         with st.spinner('Notionデータベースに接続中...'):
             # まず、データベースが存在するか確認
             try:
-                db = notion.databases.retrieve(database_id=database_id)
-                st.success("データベースに接続できました!")
+                db = notion.databases.retrieve(database_id=DATABASE_ID)
                 
                 # データベースのプロパティを確認
                 properties = {}
@@ -184,7 +154,7 @@ def add_to_notion(page_info, notion_token, database_id):
                 # Notionページを作成
                 with st.spinner('Notionにページを作成中...'):
                     new_page = notion.pages.create(
-                        parent={'database_id': database_id},
+                        parent={'database_id': DATABASE_ID},
                         properties=properties
                     )
                     
@@ -215,16 +185,16 @@ def add_to_notion(page_info, notion_token, database_id):
             except Exception as e:
                 error_msg = str(e)
                 if "Could not find database" in error_msg:
-                    return False, f"データベースIDが無効です: {database_id}"
+                    return False, f"データベースIDが無効です: {DATABASE_ID}"
                 return False, f"データベースの取得中にエラーが発生しました: {error_msg}"
         
     except Exception as e:
         error_msg = str(e)
         if "API token is invalid" in error_msg:
-            return False, "APIトークンが無効です。設定を確認してください。"
+            return False, "APIトークンが無効です。"
         return False, f"Notionへの接続中にエラーが発生しました: {error_msg}"
 
-# メイン部分: URLの入力フォーム
+# メイン部分: URLの入力フォーム (簡素化されたUI)
 url = st.text_input("ウェブページのURLを入力してください", placeholder="https://example.com")
 
 # 検索ボタンが押されたとき
@@ -257,21 +227,13 @@ if st.button("情報を取得", key="fetch_button"):
         
         # Notionに保存するボタン
         if st.button("Notionに保存する", key="save_button"):
-            if not st.session_state['notion_token'] or not st.session_state['database_id']:
-                st.error("⚠️ APIトークンとデータベースIDを設定してください")
-                st.sidebar.error("⚠️ 左のサイドバーで設定を入力してください")
+            success, result = add_to_notion(page_info)
+            
+            if success:
+                st.success("✅ Notionに保存しました！")
+                st.markdown(f"[Notionで開く]({result})")
             else:
-                success, result = add_to_notion(
-                    page_info,
-                    st.session_state['notion_token'],
-                    st.session_state['database_id']
-                )
-                
-                if success:
-                    st.success("✅ Notionに保存しました！")
-                    st.markdown(f"[Notionで開く]({result})")
-                else:
-                    st.error(f"❌ 保存に失敗しました: {result}")
+                st.error(f"❌ 保存に失敗しました: {result}")
     else:
         st.warning("URLを入力してください。")
 
@@ -287,21 +249,13 @@ elif 'page_info' in st.session_state and st.session_state['page_info']:
         st.image(page_info['thumbnail'], caption="サムネイル", width=250)
     
     if st.button("Notionに保存する", key="save_button_cached"):
-        if not st.session_state['notion_token'] or not st.session_state['database_id']:
-            st.error("⚠️ APIトークンとデータベースIDを設定してください")
-            st.sidebar.error("⚠️ 左のサイドバーで設定を入力してください")
+        success, result = add_to_notion(page_info)
+        
+        if success:
+            st.success("✅ Notionに保存しました！")
+            st.markdown(f"[Notionで開く]({result})")
         else:
-            success, result = add_to_notion(
-                page_info,
-                st.session_state['notion_token'],
-                st.session_state['database_id']
-            )
-            
-            if success:
-                st.success("✅ Notionに保存しました！")
-                st.markdown(f"[Notionで開く]({result})")
-            else:
-                st.error(f"❌ 保存に失敗しました: {result}")
+            st.error(f"❌ 保存に失敗しました: {result}")
 
 # フッター
 st.markdown("---")
