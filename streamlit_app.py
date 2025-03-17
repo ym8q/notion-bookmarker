@@ -377,7 +377,7 @@ if fetch_button and url:
     progress_bar.empty()
     
     # ページをリロードして、下のコンテンツを表示
-    st.experimental_rerun()
+    st.rerun()
 
 # 情報を取得した後の表示
 if st.session_state['page_info']:
@@ -445,7 +445,7 @@ if st.session_state['page_info']:
             st.session_state['error'] = result
         
         # ページをリロードして結果を表示
-        st.experimental_rerun()
+        st.rerun()
     
     # 保存成功時の表示
     if st.session_state['success']:
