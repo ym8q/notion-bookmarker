@@ -72,16 +72,7 @@ def display_raw_html(html):
     # h1タグ
     h1_tags = [str(tag) for tag in soup.find_all('h1')]
     
-    # 特定のクラスを持つ要素 (iwaraサイト向け)
-    title_classes = []
-    for cls in ['video-title', 'title', 'heading', 'header-title']:
-        elements = soup.find_all(class_=re.compile(cls, re.I))
-        for el in elements:
-            title_classes.append(f"Class '{cls}': {str(el)}")
-    
-    # 表示用のMarkdown
-    st.markdown("### HTMLの重要部分")
-    
+
     with st.expander("titleタグ", expanded=False):
         st.code(title_tag, language="html")
         
