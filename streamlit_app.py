@@ -519,6 +519,6 @@ if st.session_state['page_info']:
 # フッター
 st.markdown("""
 <footer>
-    <p>© 2025 Notion Bookmarker - すべてのコンテンツをNotionに保存</p>
+    <p>© 2025 Notion Bookmarker</p>
 </footer>
 """, unsafe_allow_html=True)
