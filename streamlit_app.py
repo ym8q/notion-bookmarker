@@ -66,10 +66,20 @@ with st.sidebar:
 
 # URLからウェブページの情報を抽出する関数
 def extract_webpage_info(url):
+    # 元のPythonコードと完全に同じヘッダーを使用
     headers = {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3'
+        'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
     }
     
     # ドメイン名を取得
@@ -87,7 +97,7 @@ def extract_webpage_info(url):
     try:
         # 進捗状況インジケータを表示
         with st.spinner('ページ情報を取得中...'):
-            # ウェブページのコンテンツを取得
+            # ウェブページのコンテンツを取得 - 元のコードと同じパラメータを使用
             response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
             
             # エラーチェック
@@ -95,22 +105,27 @@ def extract_webpage_info(url):
                 st.warning(f"HTTPステータスコード {response.status_code} が返されました。基本情報のみ使用します。")
                 return page_info
             
-            # BeautifulSoupでHTMLを解析
+            # BeautifulSoupでHTMLを解析 - 元のコードと同じパーサーを使用
             soup = BeautifulSoup(response.content, 'html.parser')
             
-            # タイトルを取得
+            # タイトルを取得 - 元のコードと同じロジック
             if soup.title and soup.title.string:
                 page_info['title'] = soup.title.string.strip()
             
-            # メタ説明を取得
+            # メタ説明を取得 - 元のコードと同じロジック
             meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
             if meta_desc:
                 page_info['description'] = meta_desc.get('content', '')
             
-            # サムネイル画像を取得 (Open Graph画像を優先)
+            # サムネイル画像を取得 - 元のコードと同じロジック
             og_image = soup.find('meta', attrs={'property': 'og:image'})
             if og_image:
                 page_info['thumbnail'] = og_image.get('content', '')
+            
+            # デバッグ情報
+            st.write(f"Debug - タイトルタグ: {soup.title}")
+            if soup.title:
+                st.write(f"Debug - タイトル文字列: {soup.title.string}")
             
             return page_info
             
@@ -176,21 +191,24 @@ def add_to_notion(page_info, notion_token, database_id):
                     # サムネイル画像がある場合は、子ブロックとして追加
                     if page_info['thumbnail']:
                         with st.spinner('サムネイル画像を追加中...'):
-                            notion.blocks.children.append(
-                                block_id=new_page['id'],
-                                children=[
-                                    {
-                                        "object": "block",
-                                        "type": "image",
-                                        "image": {
-                                            "type": "external",
-                                            "external": {
-                                                "url": page_info['thumbnail']
+                            try:
+                                notion.blocks.children.append(
+                                    block_id=new_page['id'],
+                                    children=[
+                                        {
+                                            "object": "block",
+                                            "type": "image",
+                                            "image": {
+                                                "type": "external",
+                                                "external": {
+                                                    "url": page_info['thumbnail']
+                                                }
                                             }
                                         }
-                                    }
-                                ]
-                            )
+                                    ]
+                                )
+                            except Exception as img_error:
+                                st.warning(f"サムネイル画像の追加中にエラーが発生しました: {img_error}")
                     
                     return True, new_page['url']
             
