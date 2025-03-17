@@ -473,9 +473,9 @@ if st.session_state['page_info']:
     </div>
     """, unsafe_allow_html=True)
     
-    # サムネイル
+    # サムネイル - 非推奨のuse_column_widthをuse_container_widthに変更
     if page_info['thumbnail']:
-        st.image(page_info['thumbnail'], caption="サムネイル", use_column_width=True)
+        st.image(page_info['thumbnail'], caption="サムネイル", use_container_width=True)
     
     # 説明
     if page_info.get('description'):
