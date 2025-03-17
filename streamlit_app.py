@@ -2,11 +2,9 @@ import streamlit as st
 import requests
 from bs4 import BeautifulSoup
 from notion_client import Client
-from urllib.parse import urlparse, urljoin
+from urllib.parse import urlparse
 from datetime import datetime
 import time
-import re
-import json
 
 # 固定の認証情報
 NOTION_API_TOKEN = "ntn_i2957150244j9hSJCmlhWx1tkxlBP2MNliQk9Z3AkBHgcK"  # あなたの実際のAPIトークンに置き換えてください
@@ -23,12 +21,44 @@ st.set_page_config(
 # カスタムCSSを適用
 st.markdown("""
 <style>
-    /* ここにCSSコードを入れる */
+    /* 全体のスタイリング */
+    .main .block-container {
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        max-width: 800px;
+    }
+    
     /* テキストスタイル */
     h1, h2, h3 {
         font-family: 'Helvetica Neue', sans-serif;
         font-weight: 500;
         color: #1E1E1E;
+    }
+    
+    h1 {
+        font-size: 2.5rem;
+        margin-bottom: 1.5rem;
+    }
+    
+    h2 {
+        font-size: 1.8rem;
+        margin-top: 2rem;
+        margin-bottom: 1rem;
+        color: #2E2E2E;
+    }
+    
+    /* カードUIスタイル */
+    .css-nahz7x, div.stButton > button, [data-testid="stForm"] {
+        border-radius: 12px;
+    }
+    
+    /* 入力フィールドのスタイル */
+    .stTextInput > div > div > input {
+        padding: 0.75rem 1rem;
+        font-size: 1.1rem;
+        border-radius: 8px;
+        border: 1px solid #E0E0E0;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.05);
     }
     
     /* ボタンスタイル */
@@ -43,6 +73,12 @@ st.markdown("""
         transition: all 0.2s ease;
     }
     
+    div.stButton > button:hover {
+        background-color: #3A56D4;
+        box-shadow: 0 4px 10px rgba(67, 97, 238, 0.4);
+        transform: translateY(-1px);
+    }
+    
     /* 情報カードのスタイル */
     .info-card {
         background-color: white;
@@ -53,7 +89,95 @@ st.markdown("""
         border-left: 4px solid #4361EE;
     }
     
-    /* ドメインバッジなど、その他のスタイル */
+    /* ドメインバッジ */
+    .domain-badge {
+        display: inline-block;
+        background-color: #F3F4F6;
+        color: #4B5563;
+        font-size: 0.85rem;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        margin-top: 0.5rem;
+        font-weight: 500;
+    }
+    
+    /* サムネイル画像のスタイル */
+    .thumbnail-container {
+        border-radius: 8px;
+        overflow: hidden;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        margin: 1rem 0;
+    }
+    
+    /* 成功メッセージのスタイル */
+    .success-message {
+        background-color: #10B981;
+        color: white;
+        padding: 1rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        margin: 1rem 0;
+    }
+    
+    .success-message svg {
+        margin-right: 0.75rem;
+    }
+    
+    /* エラーメッセージのスタイル */
+    .error-message {
+        background-color: #EF4444;
+        color: white;
+        padding: 1rem;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        margin: 1rem 0;
+    }
+    
+    /* モバイル最適化 */
+    @media (max-width: 768px) {
+        .stButton button {
+            width: 100%;
+            margin-bottom: 0.75rem;
+            padding: 0.75rem 1rem;
+        }
+        
+        h1 {
+            font-size: 2rem;
+        }
+        
+        .info-card {
+            padding: 1.25rem;
+        }
+    }
+    
+    /* ダークモード対応 */
+    @media (prefers-color-scheme: dark) {
+        .info-card {
+            background-color: #1E1E1E;
+            border-left: 4px solid #4361EE;
+        }
+        
+        .domain-badge {
+            background-color: #2E2E2E;
+            color: #D1D5DB;
+        }
+    }
+    
+    /* プログレスバーのスタイル */
+    .stProgress > div > div > div > div {
+        background-color: #4361EE;
+    }
+    
+    /* フッタースタイル */
+    footer {
+        margin-top: 3rem;
+        padding-top: 1.5rem;
+        border-top: 1px solid #E0E0E0;
+        color: #6B7280;
+        font-size: 0.9rem;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -81,10 +205,27 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Webクリッパーのような動作をするための関数
-def fetch_page_info_like_clipper(url):
-    # 基本情報の初期化
+# URLからウェブページの情報を抽出する関数
+def extract_webpage_info(url):
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Sec-Fetch-User': '?1',
+        'Cache-Control': 'max-age=0'
+    }
+    
+    # ドメイン名を取得
     domain = urlparse(url).netloc
+    
+    # 基本情報をセット
     page_info = {
         'title': f"Saved from {domain}",
         'url': url,
@@ -93,257 +234,34 @@ def fetch_page_info_like_clipper(url):
         'domain': domain
     }
     
-    # Notionウェブクリッパーのような多様なリクエストヘッダーを設定
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
-        'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://www.google.com/',  # リファラーを追加
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'cross-site',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-        'sec-ch-ua': '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"'
-    }
-    
-    # リクエストの偽装を強化するセッション
-    session = requests.Session()
-    session.headers.update(headers)
-    
-    # 特定サイト向けの特別処理
-    special_site_handlers = {
-        'iwara': handle_iwara_site
-    }
-    
-    # 特定サイト向けの処理を適用
-    for site_key, handler in special_site_handlers.items():
-        if site_key in domain:
-            return handler(url, session, page_info)
-    
-    # 通常の処理
     try:
-        # ページコンテンツを取得
-        response = session.get(url, timeout=15, allow_redirects=True)
-        response.raise_for_status()  # エラーがあれば例外を発生
+        # ウェブページのコンテンツを取得
+        response = requests.get(url, headers=headers, timeout=15, allow_redirects=True)
         
-        # HTMLを解析
-        soup = BeautifulSoup(response.text, 'html.parser')
+        # エラーチェック
+        if response.status_code != 200:
+            return page_info
         
-        # タイトル取得 - Notionクリッパーに似た優先順位
-        title = extract_title(soup, url)
-        if title:
-            page_info['title'] = title.strip()
+        # BeautifulSoupでHTMLを解析
+        soup = BeautifulSoup(response.content, 'html.parser')
         
-        # 説明取得
-        description = extract_description(soup)
-        if description:
-            page_info['description'] = description.strip()
+        # タイトルを取得
+        if soup.title and soup.title.string:
+            page_info['title'] = soup.title.string.strip()
         
-        # サムネイル画像取得
-        thumbnail = extract_thumbnail(soup, url)
-        if thumbnail:
-            page_info['thumbnail'] = thumbnail
+        # メタ説明を取得
+        meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', attrs={'property': 'og:description'})
+        if meta_desc:
+            page_info['description'] = meta_desc.get('content', '')
+        
+        # サムネイル画像を取得 (Open Graph画像を優先)
+        og_image = soup.find('meta', attrs={'property': 'og:image'})
+        if og_image:
+            page_info['thumbnail'] = og_image.get('content', '')
         
         return page_info
-    
-    except Exception as e:
-        st.error(f"ページ情報の取得中にエラーが発生しました: {str(e)}")
-        return page_info
-
-# タイトル抽出関数 - Notionクリッパーのアルゴリズムに近い実装
-def extract_title(soup, url):
-    # 優先順位に従ってタイトルを抽出
-    
-    # 1. Open Graph title
-    og_title = soup.find('meta', property='og:title')
-    if og_title and og_title.get('content'):
-        return og_title.get('content')
-    
-    # 2. Twitter Card title
-    twitter_title = soup.find('meta', attrs={'name': 'twitter:title'})
-    if twitter_title and twitter_title.get('content'):
-        return twitter_title.get('content')
-    
-    # 3. HTML title tag
-    if soup.title and soup.title.string:
-        return soup.title.string
-    
-    # 4. 最初のh1タグ
-    h1 = soup.find('h1')
-    if h1 and h1.text:
-        return h1.text
-    
-    # 5. 特定のクラス/IDを持つ要素 (一般的なパターン)
-    title_candidates = [
-        soup.find('div', class_=re.compile(r'title', re.I)),
-        soup.find('div', id=re.compile(r'title', re.I)),
-        soup.find('h2', class_=re.compile(r'title', re.I)),
-        soup.find('h2')
-    ]
-    
-    for candidate in title_candidates:
-        if candidate and candidate.text and len(candidate.text.strip()) > 3:
-            return candidate.text
-    
-    # 6. Schema.org構造化データからのタイトル取得
-    try:
-        for script in soup.find_all('script', type='application/ld+json'):
-            try:
-                data = json.loads(script.string)
-                if isinstance(data, dict) and 'headline' in data:
-                    return data['headline']
-                elif isinstance(data, dict) and 'name' in data:
-                    return data['name']
-            except:
-                continue
-    except:
-        pass
-    
-    # URLからドメイン名を抽出
-    domain = urlparse(url).netloc
-    return f"Saved from {domain}"
-
-# 説明文抽出関数
-def extract_description(soup):
-    # 1. Open Graph description
-    og_desc = soup.find('meta', property='og:description')
-    if og_desc and og_desc.get('content'):
-        return og_desc.get('content')
-    
-    # 2. Twitter Card description
-    twitter_desc = soup.find('meta', attrs={'name': 'twitter:description'})
-    if twitter_desc and twitter_desc.get('content'):
-        return twitter_desc.get('content')
-    
-    # 3. Meta description
-    meta_desc = soup.find('meta', attrs={'name': 'description'})
-    if meta_desc and meta_desc.get('content'):
-        return meta_desc.get('content')
-    
-    # 4. 最初の段落
-    p = soup.find('p')
-    if p and p.text and len(p.text.strip()) > 10:
-        return p.text.strip()[:200] + ("..." if len(p.text) > 200 else "")
-    
-    return "No description available"
-
-# サムネイル画像抽出関数
-def extract_thumbnail(soup, url):
-    # 1. Open Graph image
-    og_image = soup.find('meta', property='og:image')
-    if og_image and og_image.get('content'):
-        return og_image.get('content')
-    
-    # 2. Twitter Card image
-    twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
-    if twitter_image and twitter_image.get('content'):
-        return twitter_image.get('content')
-    
-    # 3. 最初の大きな画像
-    for img in soup.find_all('img', width=True, height=True):
-        try:
-            width = int(img.get('width'))
-            height = int(img.get('height'))
-            if width >= 100 and height >= 100:
-                # 相対URLを絶対URLに変換
-                src = img.get('src', '')
-                if src and not src.startswith(('http://', 'https://')):
-                    src = urljoin(url, src)
-                return src
-        except:
-            continue
-    
-    # 4. srcsetを持つ画像
-    for img in soup.find_all('img', srcset=True):
-        srcset = img.get('srcset', '')
-        # 最も高解像度の画像を取得
-        srcs = [s.strip().split(' ')[0] for s in srcset.split(',')]
-        if srcs:
-            # 相対URLを絶対URLに変換
-            src = srcs[-1]
-            if src and not src.startswith(('http://', 'https://')):
-                src = urljoin(url, src)
-            return src
-    
-    # 5. 最初の画像
-    img = soup.find('img', src=True)
-    if img:
-        src = img.get('src', '')
-        if src and not src.startswith(('http://', 'https://')):
-            src = urljoin(url, src)
-        return src
-    
-    return ""
-
-# iwaraサイト向けの特別ハンドラ
-def handle_iwara_site(url, session, page_info):
-    try:
-        # iwaraサイト向けのカスタムヘッダー
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.110 Safari/537.36',
-            'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-            'Referer': 'https://www.iwara.tv/'
-        })
-        
-        # ページコンテンツを取得
-        response = session.get(url, timeout=15)
-        
-        # HTMLを解析
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # iwaraの動画ページは特定のクラスや構造を持つ
-        # タイトル取得の試みをいくつか行う
-        
-        # 方法1: video-titleクラスを持つ要素
-        video_title_elem = soup.find(class_='video-title')
-        if video_title_elem and video_title_elem.text.strip():
-            page_info['title'] = video_title_elem.text.strip()
-            return page_info
-        
-        # 方法2: h1要素
-        h1_elem = soup.find('h1')
-        if h1_elem and h1_elem.text.strip():
-            page_info['title'] = h1_elem.text.strip()
-            return page_info
-        
-        # 方法3: head内のタイトル要素
-        title_elem = soup.find('title')
-        if title_elem and title_elem.text:
-            # "| Iwara"などのサフィックスを削除
-            title_text = title_elem.text.strip()
-            page_info['title'] = re.sub(r'\s*\|\s*Iwara.*$', '', title_text)
-            return page_info
-        
-        # 方法4: メタデータからの抽出
-        og_title = soup.find('meta', property='og:title')
-        if og_title and og_title.get('content'):
-            page_info['title'] = og_title.get('content').strip()
-            return page_info
-        
-        # サムネイル取得
-        og_image = soup.find('meta', property='og:image')
-        if og_image and og_image.get('content'):
-            page_info['thumbnail'] = og_image.get('content')
-        else:
-            # ビデオサムネイルの特定のパターンを探す
-            video_thumbnail = soup.find('img', class_='video-thumbnail')
-            if video_thumbnail and video_thumbnail.get('src'):
-                img_src = video_thumbnail.get('src')
-                if not img_src.startswith(('http://', 'https://')):
-                    img_src = urljoin(url, img_src)
-                page_info['thumbnail'] = img_src
-        
-        return page_info
-    
-    except Exception as e:
-        st.error(f"iwara情報の取得中にエラーが発生しました: {str(e)}")
+            
+    except Exception:
         return page_info
 
 # Notionに情報を追加する関数
@@ -415,7 +333,7 @@ def add_to_notion(page_info):
                 pass
         
         return True, new_page['url']
-    
+            
     except Exception as e:
         return False, str(e)
 
@@ -448,8 +366,8 @@ if fetch_button and url:
         time.sleep(0.05)  # シミュレーションのための遅延
         progress_bar.progress(percent_complete)
     
-    # ウェブページ情報を抽出（クリッパーのような動作）
-    page_info = fetch_page_info_like_clipper(url)
+    # ウェブページ情報を抽出
+    page_info = extract_webpage_info(url)
     st.session_state['page_info'] = page_info
     st.session_state['loading'] = False
     
@@ -492,14 +410,6 @@ if st.session_state['page_info']:
         """, unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)  # カードを閉じる
-    
-    # タイトル手動編集機能
-    st.subheader("タイトルの編集")
-    edited_title = st.text_input("タイトルを編集:", value=page_info['title'])
-    if edited_title != page_info['title']:
-        page_info['title'] = edited_title
-        st.session_state['page_info'] = page_info
-        st.success("タイトルを更新しました")
     
     # 保存ボタン - アクセントカラー使用
     save_col1, save_col2 = st.columns([1, 3])
@@ -575,6 +485,28 @@ if st.session_state['page_info']:
             <span>保存中にエラーが発生しました: {st.session_state['error']}</span>
         </div>
         """, unsafe_allow_html=True)
+
+# モバイルで本アプリをホーム画面に追加するよう促すティップス
+if st.session_state.get('first_run', True):
+    st.session_state['first_run'] = False
+    
+    # モバイルデバイスのみに表示
+    st.markdown("""
+    <script>
+    if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
+        document.write(`
+            <div style="background-color: #FEF3C7; color: #92400E; padding: 1rem; border-radius: 8px; margin: 1rem 0; display: flex; align-items: center;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.75rem;">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="8" x2="12" y2="12"></line>
+                    <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span>このアプリをホーム画面に追加すると、いつでも簡単にアクセスできます。</span>
+            </div>
+        `);
+    }
+    </script>
+    """, unsafe_allow_html=True)
 
 # フッター
 st.markdown("""
