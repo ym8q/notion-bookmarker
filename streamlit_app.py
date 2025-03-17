@@ -243,7 +243,7 @@ else:
     # 戻るボタン
     if st.button("← メイン画面に戻る"):
         st.session_state['view_mode'] = 'main'
-        st.experimental_rerun()
+        st.rerun()
     
     # Notion APIトークンとデータベースIDの入力
     notion_token = st.text_input(
@@ -265,7 +265,7 @@ else:
         st.session_state['database_id'] = database_id
         st.session_state['view_mode'] = 'main'
         st.success("設定を保存しました！")
-        st.experimental_rerun()
+        st.rerun()
 
 # フッター
 st.markdown("---")
