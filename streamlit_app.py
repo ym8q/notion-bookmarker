@@ -44,7 +44,6 @@ if 'raw_html' not in st.session_state:
 # メイン画面表示 - ヘッダー部分
 st.markdown("<h1>Notion Bookmarker</h1>", unsafe_allow_html=True)
 
-
 # 複数のユーザーエージェントを設定
 USER_AGENTS = [
     # モバイルエージェント (iOS)
@@ -478,14 +477,6 @@ if st.session_state['page_info']:
         page_info['title'] = edited_title
         st.session_state['page_info'] = page_info
         st.success("タイトルを更新しました")
-    
-    # デバッグ情報（問題解決用）
-    if st.session_state.get('raw_html'):
-        with st.expander("HTMLの分析（デバッグ用）", expanded=False):
-            try:
-                display_raw_html(st.session_state['raw_html'])
-            except Exception as e:
-                st.error(f"HTML分析中にエラーが発生しました: {str(e)}")
     
     # 保存ボタン - アクセントカラー使用
     save_col1, save_col2 = st.columns([1, 3])
