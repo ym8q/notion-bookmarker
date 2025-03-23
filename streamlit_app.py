@@ -6,415 +6,10 @@ from urllib.parse import urlparse, urljoin
 from datetime import datetime
 import time
 import re
-import json
-import random
-import http.cookiejar
-import base64
-from io import BytesIO
-from PIL import Image
 
 # 固定の認証情報
 NOTION_API_TOKEN = "ntn_i2957150244j9hSJCmlhWx1tkxlBP2MNliQk9Z3AkBHgcK"  # あなたの実際のAPIトークンに置き換えてください
 DATABASE_ID = "1b90b0428824814fa0d9db921aa812d0"  # あなたの実際のデータベースIDに置き換えてください
-
-# 成人向けサイト対応のスクレイパー
-class AdultSiteScraper:
-    def __init__(self):
-        # クッキーを保存するクッキージャーを作成
-        self.cookie_jar = http.cookiejar.CookieJar()
-        
-        # 様々なUser-Agentを用意
-        self.user_agents = [
-            # デスクトップブラウザ
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:123.0) Gecko/20100101 Firefox/123.0',
-            # モバイルブラウザ
-            'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-            'Mozilla/5.0 (Linux; Android 12; SM-G998B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/96.0.4664.104 Mobile Safari/537.36'
-        ]
-        
-        # セッションを作成して再利用する
-        self.session = requests.Session()
-        self.session.cookies = self.cookie_jar
-    
-    def get_page_info(self, url):
-        """Webページから情報を取得"""
-        # 初期化
-        page_info = {
-            'title': None,
-            'description': None,
-            'thumbnail': None,
-            'url': url,
-            'domain': urlparse(url).netloc
-        }
-        raw_html = None
-        debug_info = {}
-        
-        # ドメイン特有の処理を適用
-        domain = urlparse(url).netloc
-        
-        # 特殊なサイトの処理
-        if 'japaneseasmr.com' in domain:
-            return self._process_japaneseasmr(url, page_info)
-        elif 'supjav.com' in domain:
-            return self._process_supjav(url, page_info)
-        elif 'iwara' in domain:
-            return self._process_iwara(url, page_info)
-        else:
-            # 一般的なサイトの処理
-            return self._process_general_site(url, page_info)
-    
-    def _process_japaneseasmr(self, url, page_info):
-        """japaneseasmr.comのページ処理"""
-        debug_info = {}
-        
-        try:
-            # 成人向けサイト用のヘッダー
-            headers = {
-                'User-Agent': random.choice(self.user_agents),
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-                'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
-                'Referer': 'https://www.google.com/',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'cross-site',
-                'Pragma': 'no-cache',
-                'Cache-Control': 'no-cache'
-            }
-            
-            # リクエスト送信 
-            response = self.session.get(url, headers=headers, timeout=20)
-            
-            if response.status_code == 200:
-                raw_html = response.text
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                
-                # タイトル抽出
-                if soup.title and soup.title.string and 'just a moment' not in soup.title.string.lower():
-                    page_info['title'] = soup.title.string.strip()
-                else:
-                    # 記事タイトルを探す
-                    article_title = soup.find('h1', class_='article-title')
-                    if article_title:
-                        page_info['title'] = article_title.text.strip()
-                
-                # サムネイル画像を抽出 - japaneseasmr特有の処理
-                # 方法1: アイキャッチ画像
-                thumbnail = soup.find('div', class_='eye-catch')
-                if thumbnail and thumbnail.find('img'):
-                    img = thumbnail.find('img')
-                    if img.get('src'):
-                        page_info['thumbnail'] = urljoin(url, img.get('src'))
-                
-                # 方法2: コンテンツ内の最初の画像
-                if not page_info['thumbnail']:
-                    article_content = soup.find('div', class_='article-body')
-                    if article_content:
-                        img_tags = article_content.find_all('img')
-                        for img in img_tags:
-                            if img.get('src') and not img.get('src').endswith(('.gif', 'spacer.png', 'blank.gif')):
-                                page_info['thumbnail'] = urljoin(url, img.get('src'))
-                                break
-                
-                # 方法3: img要素のdata-src属性
-                if not page_info['thumbnail']:
-                    for img in soup.find_all('img', attrs={'data-src': True}):
-                        if not img.get('data-src').endswith(('.gif', 'spacer.png', 'blank.gif')):
-                            page_info['thumbnail'] = urljoin(url, img.get('data-src'))
-                            break
-                
-                # 方法4: articleタグの背景画像
-                if not page_info['thumbnail']:
-                    article = soup.find('article')
-                    if article:
-                        style = article.get('style')
-                        if style and 'background-image' in style:
-                            # 正規表現でURL抽出
-                            bg_match = re.search(r'background-image:\s*url\([\'"]?(.*?)[\'"]?\)', style)
-                            if bg_match:
-                                page_info['thumbnail'] = urljoin(url, bg_match.group(1))
-                
-                # 説明抽出
-                meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', property='og:description')
-                if meta_desc and meta_desc.get('content'):
-                    page_info['description'] = meta_desc.get('content').strip()
-                else:
-                    # 記事の最初の段落
-                    first_para = soup.find('div', class_='article-body').find('p')
-                    if first_para:
-                        page_info['description'] = first_para.text.strip()[:200]
-            
-            return page_info, raw_html, debug_info
-            
-        except Exception as e:
-            debug_info['error'] = str(e)
-            return page_info, None, debug_info
-    
-    def _process_supjav(self, url, page_info):
-        """supjav.comのページ処理"""
-        debug_info = {}
-        
-        try:
-            # 成人向けサイト用のヘッダー
-            headers = {
-                'User-Agent': random.choice(self.user_agents),
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
-                'Referer': 'https://www.google.com/',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Cookie': 'kt_tcookie=1; kt_is_visited=1; kt_ips=127.0.0.1',  # 成人向けサイトで必要なことがある
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0'
-            }
-            
-            # リクエスト送信
-            response = self.session.get(url, headers=headers, timeout=20)
-            
-            if response.status_code == 200:
-                raw_html = response.text
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                
-                # タイトル抽出
-                if soup.title and soup.title.string and 'just a moment' not in soup.title.string.lower():
-                    page_info['title'] = soup.title.string.strip()
-                else:
-                    # 記事タイトル要素を探す
-                    article_title = soup.find('h1', class_='article-title') or soup.find('h1', class_='entry-title')
-                    if article_title:
-                        page_info['title'] = article_title.text.strip()
-                
-                # サムネイル画像を抽出 - supjav特有の処理
-                # 方法1: サムネイル専用クラス
-                for class_name in ['thumb', 'thumbnail', 'wp-post-image', 'video-thumb']:
-                    if not page_info['thumbnail']:
-                        thumbnail = soup.find('img', class_=class_name)
-                        if thumbnail and thumbnail.get('src'):
-                            page_info['thumbnail'] = urljoin(url, thumbnail.get('src'))
-                
-                # 方法2: ビデオプレビュー画像
-                if not page_info['thumbnail']:
-                    video_preview = soup.find('div', class_='video-preview')
-                    if video_preview and video_preview.find('img'):
-                        img = video_preview.find('img')
-                        if img.get('src'):
-                            page_info['thumbnail'] = urljoin(url, img.get('src'))
-                
-                # 方法3: データ属性のある画像
-                if not page_info['thumbnail']:
-                    for attr in ['data-src', 'data-lazy-src', 'data-original']:
-                        for img in soup.find_all('img', attrs={attr: True}):
-                            if not img.get(attr).endswith(('.gif', 'spacer.png')):
-                                page_info['thumbnail'] = urljoin(url, img.get(attr))
-                                break
-                        if page_info['thumbnail']:
-                            break
-                
-                # 方法4: スタイル属性から背景画像を抽出
-                if not page_info['thumbnail']:
-                    elements_with_style = soup.find_all(style=re.compile(r'background(-image)?:\s*url'))
-                    for element in elements_with_style:
-                        style = element.get('style')
-                        bg_match = re.search(r'background(-image)?:\s*url\([\'"]?(.*?)[\'"]?\)', style)
-                        if bg_match:
-                            page_info['thumbnail'] = urljoin(url, bg_match.group(2))
-                            break
-                
-                # 方法5: メタタグからの抽出
-                if not page_info['thumbnail']:
-                    og_image = soup.find('meta', property='og:image')
-                    if og_image and og_image.get('content'):
-                        page_info['thumbnail'] = og_image.get('content')
-                
-                # 説明抽出
-                meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', property='og:description')
-                if meta_desc and meta_desc.get('content'):
-                    page_info['description'] = meta_desc.get('content').strip()
-            
-            return page_info, raw_html, debug_info
-            
-        except Exception as e:
-            debug_info['error'] = str(e)
-            return page_info, None, debug_info
-    
-    def _process_iwara(self, url, page_info):
-        """iwaraサイトの処理"""
-        debug_info = {}
-        
-        try:
-            # iwaraサイト用のヘッダー
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
-                'Referer': 'https://www.iwara.tv/',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1'
-            }
-            
-            # リクエスト送信
-            response = self.session.get(url, headers=headers, timeout=20)
-            
-            if response.status_code == 200:
-                raw_html = response.text
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                
-                # タイトル抽出
-                title_candidates = []
-                
-                # 1. video-titleクラスを探す
-                video_title = soup.find(class_='video-title')
-                if video_title and video_title.text.strip():
-                    title_candidates.append(video_title.text.strip())
-                
-                # 2. nodeのタイトルを探す
-                node_title = soup.find(class_='node-title')
-                if node_title and node_title.text.strip():
-                    title_candidates.append(node_title.text.strip())
-                
-                # 3. h1タグを探す
-                h1 = soup.find('h1')
-                if h1 and h1.text.strip():
-                    title_candidates.append(h1.text.strip())
-                
-                # 4. ページタイトル
-                if soup.title and soup.title.string:
-                    title_text = soup.title.string.strip()
-                    # "iwara"の部分を削除
-                    title_text = re.sub(r'\s*[|\-–—]\s*iwara.*$', '', title_text, flags=re.IGNORECASE)
-                    title_candidates.append(title_text)
-                
-                # 最適なタイトルを選択
-                if title_candidates:
-                    page_info['title'] = title_candidates[0]
-                
-                # サムネイル画像抽出
-                # 1. video-thumbnailクラス
-                video_thumb = soup.find('img', class_='video-thumbnail')
-                if video_thumb and video_thumb.get('src'):
-                    page_info['thumbnail'] = urljoin(url, video_thumb.get('src'))
-                
-                # 2. OGP画像
-                if not page_info['thumbnail']:
-                    og_image = soup.find('meta', property='og:image')
-                    if og_image and og_image.get('content'):
-                        page_info['thumbnail'] = og_image.get('content')
-                
-                # 3. ビデオプレビュー画像
-                if not page_info['thumbnail']:
-                    video_preview = soup.find('div', class_='video-preview')
-                    if video_preview and video_preview.find('img'):
-                        img = video_preview.find('img')
-                        if img.get('src'):
-                            page_info['thumbnail'] = urljoin(url, img.get('src'))
-                
-                # 説明抽出
-                meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', property='og:description')
-                if meta_desc and meta_desc.get('content'):
-                    page_info['description'] = meta_desc.get('content').strip()
-            
-            return page_info, raw_html, debug_info
-            
-        except Exception as e:
-            debug_info['error'] = str(e)
-            return page_info, None, debug_info
-    
-    def _process_general_site(self, url, page_info):
-        """一般的なサイトの処理"""
-        debug_info = {}
-        
-        try:
-            # 一般的なヘッダー
-            headers = {
-                'User-Agent': random.choice(self.user_agents),
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'DNT': '1',
-                'Connection': 'keep-alive',
-                'Upgrade-Insecure-Requests': '1',
-                'Sec-Fetch-Dest': 'document',
-                'Sec-Fetch-Mode': 'navigate',
-                'Sec-Fetch-Site': 'none',
-                'Sec-Fetch-User': '?1',
-                'Cache-Control': 'max-age=0'
-            }
-            
-            # リクエスト送信
-            response = self.session.get(url, headers=headers, timeout=20)
-            
-            if response.status_code == 200:
-                raw_html = response.text
-                soup = BeautifulSoup(raw_html, 'html.parser')
-                
-                # タイトル抽出
-                title_candidates = []
-                
-                # 1. Open Graph Title
-                og_title = soup.find('meta', property='og:title')
-                if og_title and og_title.get('content'):
-                    title_candidates.append(('og:title', og_title.get('content').strip()))
-                
-                # 2. Twitter Card Title
-                twitter_title = soup.find('meta', attrs={'name': 'twitter:title'})
-                if twitter_title and twitter_title.get('content'):
-                    title_candidates.append(('twitter:title', twitter_title.get('content').strip()))
-                
-                # 3. HTML Title
-                if soup.title and soup.title.string:
-                    title_text = soup.title.string.strip()
-                    # サイト名を除去する処理
-                    title_text = re.sub(r'\s*[|\-–—]\s*.*$', '', title_text)
-                    title_candidates.append(('html_title', title_text))
-                
-                # 最良のタイトルを選択
-                if title_candidates:
-                    page_info['title'] = title_candidates[0][1]
-                else:
-                    page_info['title'] = f"Saved from {page_info['domain']}"
-                
-                # サムネイル画像抽出
-                # 1. Open Graph Image
-                og_image = soup.find('meta', property='og:image')
-                if og_image and og_image.get('content'):
-                    page_info['thumbnail'] = og_image.get('content')
-                
-                # 2. Twitter Card Image
-                if not page_info['thumbnail']:
-                    twitter_image = soup.find('meta', attrs={'name': 'twitter:image'})
-                    if twitter_image and twitter_image.get('content'):
-                        page_info['thumbnail'] = twitter_image.get('content')
-                
-                # 3. 最初の大きな画像
-                if not page_info['thumbnail']:
-                    for img in soup.find_all('img', attrs={'width': True, 'height': True}):
-                        try:
-                            width = int(img.get('width'))
-                            height = int(img.get('height'))
-                            if width >= 100 and height >= 100:
-                                page_info['thumbnail'] = urljoin(url, img.get('src'))
-                                break
-                        except:
-                            pass
-                
-                # 説明抽出
-                meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', property='og:description')
-                if meta_desc and meta_desc.get('content'):
-                    page_info['description'] = meta_desc.get('content').strip()
-            
-            return page_info, raw_html, debug_info
-            
-        except Exception as e:
-            debug_info['error'] = str(e)
-            return page_info, None, debug_info
 
 # アプリのタイトルとスタイル設定
 st.set_page_config(
@@ -541,6 +136,38 @@ st.markdown("""
         margin: 1rem 0;
     }
     
+    /* ヘルプボックス */
+    .help-box {
+        background-color: #FEF3C7;
+        border-left: 4px solid #F59E0B;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 1rem 0;
+    }
+    
+    /* ステップバイステップガイド */
+    .step {
+        display: flex;
+        margin-bottom: 0.5rem;
+    }
+    
+    .step-number {
+        background-color: #4361EE;
+        color: white;
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-right: 0.75rem;
+        flex-shrink: 0;
+    }
+    
+    .step-content {
+        flex: 1;
+    }
+    
     /* モバイル最適化 */
     @media (max-width: 768px) {
         .stButton button {
@@ -584,8 +211,6 @@ if 'notion_url' not in st.session_state:
     st.session_state['notion_url'] = None
 if 'raw_html' not in st.session_state:
     st.session_state['raw_html'] = None
-if 'scraper' not in st.session_state:
-    st.session_state['scraper'] = AdultSiteScraper()
 
 # メイン画面表示 - ヘッダー部分
 st.markdown("<h1>Notion Bookmarker</h1>", unsafe_allow_html=True)
@@ -597,11 +222,68 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# メタデータリクエスト
-def get_metadata_advanced(url):
-    """Webページからメタデータを取得（成人向けサイト対応）"""
-    scraper = st.session_state['scraper']
-    return scraper.get_page_info(url)
+# ベーシックなウェブページ情報抽出関数
+def get_basic_page_info(url):
+    """
+    URLから基本的なページ情報を抽出
+    """
+    # ドメイン名を取得
+    domain = urlparse(url).netloc
+    
+    # 基本情報をセット
+    page_info = {
+        'title': None,
+        'description': None,
+        'thumbnail': None,
+        'url': url,
+        'domain': domain
+    }
+    
+    try:
+        # リクエストヘッダー
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'ja,en-US;q=0.7,en;q=0.3',
+            'Referer': 'https://www.google.com/'
+        }
+        
+        # リクエスト送信
+        response = requests.get(url, headers=headers, timeout=15)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # タイトル取得
+            if soup.title and soup.title.string:
+                title_text = soup.title.string.strip()
+                # Just a momentを除外
+                if not ('just a moment' in title_text.lower()):
+                    page_info['title'] = title_text
+            
+            # タイトルがない場合、OGPから取得
+            if not page_info['title']:
+                og_title = soup.find('meta', property='og:title')
+                if og_title and og_title.get('content'):
+                    page_info['title'] = og_title.get('content').strip()
+            
+            # 最終的にドメインからタイトルを生成
+            if not page_info['title']:
+                page_info['title'] = f"Content from {domain}"
+            
+            # 説明文取得
+            meta_desc = soup.find('meta', attrs={'name': 'description'}) or soup.find('meta', property='og:description')
+            if meta_desc and meta_desc.get('content'):
+                page_info['description'] = meta_desc.get('content').strip()
+            
+            # ページ全体のHTMLを保存
+            page_info['html'] = response.text
+            
+    except Exception as e:
+        # エラー時はドメインからタイトル作成
+        page_info['title'] = f"Content from {domain}"
+        
+    return page_info
 
 # Notionに情報を追加する関数
 def add_to_notion(page_info):
@@ -651,7 +333,7 @@ def add_to_notion(page_info):
         )
         
         # サムネイル画像がある場合は、子ブロックとして追加
-        if page_info['thumbnail']:
+        if page_info.get('thumbnail'):
             try:
                 notion.blocks.children.append(
                     block_id=new_page['id'],
@@ -702,21 +384,19 @@ if fetch_button and url:
     # プログレスバーを表示
     progress_bar = st.progress(0)
     
-    # ウェブページ情報を抽出（改良版）
+    # ウェブページ情報を抽出（シンプル版）
     with st.spinner("ページ情報を取得中..."):
         for percent_complete in range(0, 80, 10):
             time.sleep(0.1)
             progress_bar.progress(percent_complete)
             
-        page_info, raw_html, debug_info = get_metadata_advanced(url)
+        page_info = get_basic_page_info(url)
         
         for percent_complete in range(80, 101, 5):
             time.sleep(0.05)
             progress_bar.progress(percent_complete)
     
     st.session_state['page_info'] = page_info
-    st.session_state['raw_html'] = raw_html
-    st.session_state['debug_info'] = debug_info
     st.session_state['loading'] = False
     
     # プログレスバーを完了状態にして少し待ってから消す
@@ -744,28 +424,6 @@ if st.session_state['page_info']:
     </div>
     """, unsafe_allow_html=True)
     
-    # サムネイル - use_container_widthを使用
-    if page_info['thumbnail']:
-        st.image(page_info['thumbnail'], caption="サムネイル", use_container_width=True)
-    else:
-        st.warning("サムネイル画像を取得できませんでした。")
-        
-        # 手動でサムネイルURLを入力するオプション
-        manual_thumbnail = st.text_input("サムネイルURLを手動で入力:", placeholder="https://example.com/image.jpg")
-        if manual_thumbnail:
-            try:
-                st.image(manual_thumbnail, caption="入力されたサムネイル", use_container_width=True)
-                page_info['thumbnail'] = manual_thumbnail
-                st.session_state['page_info'] = page_info
-                st.success("サムネイルを更新しました")
-            except Exception as e:
-                st.error(f"画像の読み込みに失敗しました: {str(e)}")
-    
-    # 説明
-    if page_info.get('description'):
-        st.markdown("**説明**:")
-        st.write(page_info['description'])
-    
     # タイトル手動編集機能
     st.subheader("タイトルの編集")
     edited_title = st.text_input("タイトルを編集:", value=page_info['title'])
@@ -773,6 +431,76 @@ if st.session_state['page_info']:
         page_info['title'] = edited_title
         st.session_state['page_info'] = page_info
         st.success("タイトルを更新しました")
+    
+    # サムネイルの手動入力セクション
+    st.subheader("サムネイル画像")
+    
+    # サムネイル入力のガイド
+    st.markdown("""
+    <div class="help-box">
+        <h4 style="margin-top: 0;">サムネイル画像の取得方法</h4>
+        <div class="step">
+            <div class="step-number">1</div>
+            <div class="step-content">元のウェブページで画像を右クリック → 「画像アドレスをコピー」を選択</div>
+        </div>
+        <div class="step">
+            <div class="step-number">2</div>
+            <div class="step-content">または、画像の上で右クリック → 「検証」を選択 → imgタグのsrcやdata-src属性のURLをコピー</div>
+        </div>
+        <div class="step">
+            <div class="step-number">3</div>
+            <div class="step-content">コピーしたURLを下の入力欄に貼り付けて「プレビュー」をクリック</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # サムネイルURLの入力フォームと検証ボタン
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        thumbnail_url = st.text_input("サムネイルのURL:", value=page_info.get('thumbnail', ''))
+    with col2:
+        preview_button = st.button("プレビュー", key="preview_button", use_container_width=True)
+    
+    # プレビューボタンが押されたとき
+    if preview_button and thumbnail_url:
+        try:
+            st.image(thumbnail_url, caption="サムネイルプレビュー", use_container_width=True)
+            page_info['thumbnail'] = thumbnail_url
+            st.session_state['page_info'] = page_info
+            st.success("サムネイルが更新されました")
+        except Exception as e:
+            st.error(f"画像の読み込みに失敗しました: {str(e)}")
+    
+    # 既存のサムネイルがある場合は表示
+    elif page_info.get('thumbnail'):
+        try:
+            st.image(page_info['thumbnail'], caption="サムネイル", use_container_width=True)
+        except:
+            st.warning("保存されたサムネイルの表示に失敗しました。URLを修正してください。")
+    
+    # 特定のドメイン向けのヒント
+    domain = urlparse(url).netloc
+    
+    if 'japaneseasmr.com' in domain:
+        st.markdown("""
+        <div class="help-box">
+            <h4>japaneseasmr.com のヒント</h4>
+            <p>このサイトでは、記事内の最初の画像がよいサムネイルになります。記事内の画像を右クリックして「画像アドレスをコピー」を選択してください。</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    elif 'supjav.com' in domain:
+        st.markdown("""
+        <div class="help-box">
+            <h4>supjav.com のヒント</h4>
+            <p>このサイトでは、動画のプレビュー画像がサムネイルに適しています。プレビュー画像を右クリックして「画像アドレスをコピー」を選択するか、「検証」からdata-srcやdata-original属性の値をコピーしてください。</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 説明文セクション
+    if page_info.get('description'):
+        st.subheader("説明")
+        st.text_area("説明文:", value=page_info['description'], height=100)
     
     # 保存ボタン - アクセントカラー使用
     save_col1, save_col2 = st.columns([1, 3])
