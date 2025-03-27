@@ -123,6 +123,18 @@ def guess_content_type(url, soup):
     elif any(ext in url_lower for ext in ['.pdf', '.doc', '.docx', '.ppt', '.xls']):
         return 'document'
     
+    # アニメ関連サイト
+    if any(site in domain for site in ['crunchyroll', 'funimation', 'animelab', 'myanimelist', 'anilist']):
+        return 'anime'
+    
+    # 漫画関連サイト
+    if any(site in domain for site in ['mangadex', 'mangaplus', 'comixology', 'manga-up']):
+        return 'manga'
+    
+    # ASMR関連サイト
+    if any(keyword in domain or keyword in url_lower for keyword in ['asmr', 'whispering', 'binaural']):
+        return 'ASMR'
+    
     # 一般的な動画サイト
     if any(site in domain for site in ['youtube.com', 'youtu.be', 'vimeo.com', 'nicovideo.jp']):
         return 'video'
@@ -153,6 +165,29 @@ def guess_content_type(url, soup):
                 return 'product'
             elif 'music' in og_content:
                 return 'music'
+        
+        # キーワードをチェック
+        keywords_meta = soup.find('meta', attrs={'name': 'keywords'})
+        if keywords_meta and keywords_meta.get('content'):
+            keywords = keywords_meta.get('content').lower()
+            if 'anime' in keywords:
+                return 'anime'
+            elif 'manga' in keywords:
+                return 'manga'
+            elif 'asmr' in keywords:
+                return 'ASMR'
+        
+        # タイトルやコンテンツからキーワードをチェック
+        page_text = ''
+        if soup.title:
+            page_text += soup.title.string.lower() if soup.title.string else ''
+        
+        if 'anime' in page_text:
+            return 'anime'
+        elif 'manga' in page_text:
+            return 'manga'
+        elif 'asmr' in page_text:
+            return 'ASMR'
         
         # ビデオ要素をチェック
         if soup.find('video') or soup.find('iframe', src=lambda x: x and ('youtube.com' in x or 'vimeo.com' in x)):
@@ -538,9 +573,9 @@ if st.session_state['page_info']:
         page_info['title'] = edited_title
         st.session_state['page_info'] = page_info
         st.success("タイトルを更新しました")
-    
+
     # コンテンツタイプ編集
-    content_types = ['article', 'video', 'image', 'social', 'product', 'document', 'music', 'other']
+    content_types = ['article', 'video', 'image', 'social', 'product', 'document', 'music', 'anime', 'manga', 'ASMR', 'other']
     selected_type = st.selectbox(
         "コンテンツタイプ:", 
         options=content_types, 
