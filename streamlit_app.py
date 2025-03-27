@@ -403,36 +403,21 @@ def add_to_notion(page_info):
         # URLフィールド
         if 'URL' in db['properties'] and db['properties']['URL']['type'] == 'url':
             properties['URL'] = {'url': page_info['url']}
-        
-        # タグフィールド - ドメインをタグとして追加
+
+        # コンテンツタイプフィールド
+        if 'カテゴリ' in db['properties'] and db['properties']['カテゴリ']['type'] == 'select':
+            content_type = page_info.get('content_type', 'article')
+            properties['カテゴリ'] = {'select': {'name': content_type}}
+                
+        # タグフィールド - ドメインをタグとして追加「しない」
         if 'タグ' in db['properties'] and db['properties']['タグ']['type'] == 'multi_select':
-            domain = page_info['domain']
-            tags = [{'name': domain}]  # ドメインをタグとして追加
-            properties['タグ'] = {'multi_select': tags}
-        
-        # 作成日時フィールド
-        if '保存日' in db['properties'] and db['properties']['保存日']['type'] == 'date':
-            properties['保存日'] = {
-                'date': {
-                    'start': datetime.now().isoformat()
-                }
-            }
-        elif '作成日時' in db['properties'] and db['properties']['作成日時']['type'] == 'date':
-            properties['作成日時'] = {
-                'date': {
-                    'start': datetime.now().isoformat()
-                }
-            }
+            # ここでタグを空の配列として設定（ドメインを追加しない）
+            properties['タグ'] = {'multi_select': []}
         
         # ソースフィールド
         if 'ソース' in db['properties'] and db['properties']['ソース']['type'] == 'select':
             properties['ソース'] = {'select': {'name': page_info['domain']}}
-        
-        # コンテンツタイプフィールド
-        if '種類' in db['properties'] and db['properties']['種類']['type'] == 'select':
-            content_type = page_info.get('content_type', 'article')
-            properties['種類'] = {'select': {'name': content_type}}
-        
+            
         # 説明フィールド
         if '説明' in db['properties'] and db['properties']['説明']['type'] in ['rich_text', 'text']:
             if page_info.get('description'):
