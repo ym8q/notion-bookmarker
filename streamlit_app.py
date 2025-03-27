@@ -20,7 +20,7 @@ logger = logging.getLogger("NotionBookmarker")
 
 # アプリのタイトルとスタイル設定
 st.set_page_config(
-    page_title="Smart Notion Bookmarker",
+    page_title="Notion Bookmarker",
     page_icon="📚",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -459,7 +459,7 @@ def add_to_notion(page_info):
         return False, str(e)
 
 # メイン画面
-st.markdown("<h1 class='main-header'>Smart Notion Bookmarker</h1>", unsafe_allow_html=True)
+st.markdown("<h1 class='main-header'>Notion Bookmarker</h1>", unsafe_allow_html=True)
 
 # URL入力フォーム
 url = st.text_input("ブックマークするURLを入力", placeholder="https://example.com")
@@ -590,6 +590,6 @@ if st.session_state.get('error'):
 # フッター
 st.markdown("""
 <footer>
-    <p>© 2024 Smart Notion Bookmarker</p>
+    <p>© 2025 Notion Bookmarker</p>
 </footer>
 """, unsafe_allow_html=True)
